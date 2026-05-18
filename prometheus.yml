@@ -6,7 +6,23 @@ scrape_configs:
   - job_name: linux-vmware-servers
     static_configs:
       - targets:
-          - 192.168.1.50:9100
+          - 192.168.31.152:9100
         labels:
           role: linux-server
           environment: lab
+
+  - job_name: local-node-exporter
+    static_configs:
+      - targets:
+          - 192.168.31.160:9100
+        labels:
+          role: local-node
+          environment: local
+
+  - job_name: prometheus-self
+    static_configs:
+      - targets:
+          - 192.168.31.160:9090
+        labels:
+          role: prometheus
+          environment: local

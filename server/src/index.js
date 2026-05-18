@@ -2,10 +2,12 @@ import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
 import jwt from "jsonwebtoken";
-import { alerts, assets } from "./data.js";
 import { MockMetricsProvider, PrometheusMetricsProvider } from "./metricsProvider.js";
 
-dotenv.config();
+// Load environment first from server/.env, then dynamically import `data.js` so it can read env vars from .env
+dotenv.config({ path: new URL('../.env', import.meta.url).pathname });
+
+const { alerts, assets } = await import("./data.js");
 
 const app = express();
 const port = process.env.PORT || 4000;

@@ -25,6 +25,147 @@ const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:4000";
 const severityOrder = { OK: 0, INFO: 1, WARNING: 2, HIGH: 3, CRITICAL: 4 };
 const severityLabels = ["OK", "INFO", "WARNING", "HIGH", "CRITICAL"];
 
+const localeLabels = { en: "English", vi: "Tiếng Việt" };
+const localeMap = { en: "en-US", vi: "vi-VN" };
+const messages = {
+  en: {
+    loginIntro: "Sign in as an administrator to view system status.",
+    username: "Username",
+    password: "Password",
+    signingIn: "Signing in...",
+    signIn: "Sign in",
+    dashboard: "Dashboard",
+    assets: "Hosts & Devices",
+    alerts: "Alerts",
+    settings: "Settings",
+    roleAdmin: "role: admin",
+    logout: "Logout",
+    dashboardSubtitle: "Overview of server, network device, and service status.",
+    onlineAssets: "Online assets",
+    responding: "responding",
+    criticalAlerts: "Critical alerts",
+    unacknowledged: "unacknowledged",
+    serviceHealth: "Service health",
+    basedOnAssetStatus: "based on asset status",
+    openAlerts: "Open alerts",
+    warningNeedsAction: "warning or higher needs action",
+    assetStatus: "Asset status",
+    monitoredObjects: "monitored objects",
+    recentAlerts: "Recent alerts",
+    open: "open",
+    assetsSubtitle: "Filter, inspect status, and view metrics by asset.",
+    searchPlaceholder: "Search by name or IP",
+    allTypes: "{t("allTypes")}",
+    allStatuses: "{t("allStatuses")}",
+    asset: "Asset",
+    ipEndpoint: "IP / Endpoint",
+    status: "Status",
+    severity: "Severity",
+    lastCheck: "Last check",
+    selectAsset: "Select an asset",
+    selectAssetHelp: "View metrics, interfaces/services, and recent alerts.",
+    memory: "Memory",
+    latency: "Latency",
+    loss: "Loss",
+    uptime: "Uptime",
+    trafficIn: "Traffic in",
+    interfacesServices: "Interfaces / Services",
+    lastSamples: "last 24 samples",
+    noData: "No data",
+    alertsSubtitle: "Track severity and acknowledge open incidents.",
+    allSeverities: "{t("allSeverities")}",
+    allStates: "{t("allStates")}",
+    acknowledged: "{t("acknowledged")}",
+    ack: "Ack",
+    settingsSubtitle: "Configure runtime and data adapters for the MVP.",
+    metricsProvider: "Metrics provider",
+    metricsProviderText: "Current provider is",
+    metricsProviderHelp: "When Prometheus is available, swap the backend adapter to call PromQL through the same frontend API.",
+    apiBase: "API base",
+    authMode: "Auth mode",
+    polling: "Polling",
+    authModeValue: "single admin JWT",
+    pollingValue: "10s asset detail refresh",
+    language: "Language"
+  },
+  vi: {
+    loginIntro: "Đăng nhập quản trị để xem trạng thái hệ thống.",
+    username: "Tên đăng nhập",
+    password: "Mật khẩu",
+    signingIn: "Đang đăng nhập...",
+    signIn: "Đăng nhập",
+    dashboard: "Dashboard",
+    assets: "Máy chủ & Thiết bị",
+    alerts: "Cảnh báo",
+    settings: "Cài đặt",
+    roleAdmin: "vai trò: admin",
+    logout: "Đăng xuất",
+    dashboardSubtitle: "Tổng quan trạng thái server, thiết bị mạng và service.",
+    onlineAssets: "Asset online",
+    responding: "đang phản hồi",
+    criticalAlerts: "Cảnh báo nghiêm trọng",
+    unacknowledged: "chưa xác nhận",
+    serviceHealth: "Sức khỏe dịch vụ",
+    basedOnAssetStatus: "dựa trên trạng thái asset",
+    openAlerts: "Cảnh báo mở",
+    warningNeedsAction: "warning trở lên cần xử lý",
+    assetStatus: "Trạng thái asset",
+    monitoredObjects: "đối tượng đang giám sát",
+    recentAlerts: "Cảnh báo gần đây",
+    open: "đang mở",
+    assetsSubtitle: "Lọc, kiểm tra trạng thái và xem metric theo từng asset.",
+    searchPlaceholder: "Tìm theo tên hoặc IP",
+    allTypes: "Tất cả loại",
+    allStatuses: "Tất cả trạng thái",
+    asset: "Asset",
+    ipEndpoint: "IP / Endpoint",
+    status: "Trạng thái",
+    severity: "Mức độ",
+    lastCheck: "Lần kiểm tra cuối",
+    selectAsset: "Chọn một asset",
+    selectAssetHelp: "Xem metric, interface/service và cảnh báo gần nhất.",
+    memory: "Bộ nhớ",
+    latency: "Độ trễ",
+    loss: "Mất gói",
+    uptime: "Uptime",
+    trafficIn: "Traffic vào",
+    interfacesServices: "Interfaces / Services",
+    lastSamples: "24 mẫu gần nhất",
+    noData: "Không có dữ liệu",
+    alertsSubtitle: "Theo dõi severity và xác nhận sự cố đang mở.",
+    allSeverities: "Tất cả mức độ",
+    allStates: "Tất cả trạng thái",
+    acknowledged: "Đã xác nhận",
+    ack: "Xác nhận",
+    settingsSubtitle: "Cấu hình runtime và adapter dữ liệu cho MVP.",
+    metricsProvider: "Provider metric",
+    metricsProviderText: "Provider hiện tại là",
+    metricsProviderHelp: "Khi có Prometheus, thay adapter backend để gọi PromQL qua cùng API frontend.",
+    apiBase: "API base",
+    authMode: "Chế độ auth",
+    polling: "Polling",
+    authModeValue: "JWT admin đơn",
+    pollingValue: "refresh chi tiết asset mỗi 10s",
+    language: "Ngôn ngữ"
+  }
+};
+
+function getInitialLocale() {
+  const saved = localStorage.getItem("network-monitor-locale");
+  if (saved === "en" || saved === "vi") return saved;
+  return navigator.language?.toLowerCase().startsWith("vi") ? "vi" : "en";
+}
+
+function useI18n() {
+  const [locale, setLocaleState] = useState(getInitialLocale);
+  const setLocale = (nextLocale) => {
+    localStorage.setItem("network-monitor-locale", nextLocale);
+    setLocaleState(nextLocale);
+  };
+  const t = (key) => messages[locale][key] || messages.en[key] || key;
+  return { locale, setLocale, t };
+}
+
 function apiFetch(path, token, options = {}) {
   return fetch(`${API_BASE}${path}`, {
     ...options,
@@ -40,8 +181,8 @@ function apiFetch(path, token, options = {}) {
   });
 }
 
-function formatTime(value) {
-  return new Intl.DateTimeFormat("vi-VN", {
+function formatTime(value, locale = "vi") {
+  return new Intl.DateTimeFormat(localeMap[locale] || localeMap.vi, {
     hour: "2-digit",
     minute: "2-digit",
     day: "2-digit",
@@ -74,10 +215,10 @@ function MetricCard({ icon, label, value, detail, tone = "neutral" }) {
   );
 }
 
-function MiniChart({ series, color = "#2563eb", unit = "" }) {
+function MiniChart({ series, color = "#2563eb", unit = "", t }) {
   const points = series || [];
   if (points.length === 0) {
-    return <div className="chart chart-empty">No data</div>;
+    return <div className="chart chart-empty">{t("noData")}</div>;
   }
 
   const max = Math.max(...points.map((point) => point.value), 1);
@@ -104,7 +245,7 @@ function MiniChart({ series, color = "#2563eb", unit = "" }) {
   );
 }
 
-function Login({ onLogin }) {
+function Login({ onLogin, t, locale, setLocale }) {
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("admin123");
   const [error, setError] = useState("");
@@ -133,13 +274,13 @@ function Login({ onLogin }) {
       <form className="login-panel" onSubmit={submit}>
         <div className="brand-mark"><Activity size={28} /></div>
         <h1>Network Monitor</h1>
-        <p>Đăng nhập quản trị để xem trạng thái hệ thống.</p>
+        <p>{t("loginIntro")}</p>
         <label>
-          Username
+          {t("username")}
           <input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" />
         </label>
         <label>
-          Password
+          {t("password")}
           <input
             type="password"
             value={password}
@@ -150,19 +291,26 @@ function Login({ onLogin }) {
         {error ? <div className="form-error">{error}</div> : null}
         <button type="submit" disabled={loading}>
           <Lock size={16} />
-          {loading ? "Đang đăng nhập..." : "Đăng nhập"}
+          {loading ? t("signingIn") : t("signIn")}
         </button>
+              <label>
+          {t("language")}
+          <select value={locale} onChange={(event) => setLocale(event.target.value)}>
+            <option value="en">{localeLabels.en}</option>
+            <option value="vi">{localeLabels.vi}</option>
+          </select>
+        </label>
       </form>
     </main>
   );
 }
 
-function Shell({ page, setPage, user, onLogout, children }) {
+function Shell({ page, setPage, user, onLogout, children, t, locale, setLocale }) {
   const nav = [
-    ["dashboard", "Dashboard", LayoutDashboard],
-    ["assets", "Hosts & Devices", Server],
-    ["alerts", "Alerts", Bell],
-    ["settings", "Settings", Settings]
+    ["dashboard", t("dashboard"), LayoutDashboard],
+    ["assets", t("assets"), Server],
+    ["alerts", t("alerts"), Bell],
+    ["settings", t("settings"), Settings]
   ];
 
   return (
@@ -182,8 +330,15 @@ function Shell({ page, setPage, user, onLogout, children }) {
         </nav>
         <div className="sidebar-user">
           <span>{user?.username || "admin"}</span>
-          <small>role: admin</small>
-          <button onClick={onLogout}><LogOut size={16} /> Logout</button>
+          <small>{t("roleAdmin")}</small>
+          <label className="locale-switch">
+            {t("language")}
+            <select value={locale} onChange={(event) => setLocale(event.target.value)}>
+              <option value="en">{localeLabels.en}</option>
+              <option value="vi">{localeLabels.vi}</option>
+            </select>
+          </label>
+          <button onClick={onLogout}><LogOut size={16} /> {t("logout")}</button>
         </div>
       </aside>
       <main className="content">{children}</main>
@@ -191,7 +346,7 @@ function Shell({ page, setPage, user, onLogout, children }) {
   );
 }
 
-function Dashboard({ assets, alerts, onSelectAsset }) {
+function Dashboard({ assets, alerts, onSelectAsset, t, locale }) {
   const openAlerts = alerts.filter((alert) => !alert.acknowledged);
   const critical = openAlerts.filter((alert) => alert.severity === "CRITICAL").length;
   const online = assets.filter((asset) => asset.status === "online").length;
@@ -199,32 +354,32 @@ function Dashboard({ assets, alerts, onSelectAsset }) {
 
   return (
     <>
-      <PageHeader title="Dashboard" subtitle="Tổng quan trạng thái server, network device và service." />
+      <PageHeader title={t("dashboard")} subtitle={t("dashboardSubtitle")} />
       <div className="metric-grid">
-        <MetricCard icon={<CheckCircle2 />} label="Online assets" value={`${online}/${assets.length}`} detail="đang phản hồi" tone="ok" />
-        <MetricCard icon={<AlertTriangle />} label="Critical alerts" value={critical} detail="chưa acknowledge" tone="critical" />
-        <MetricCard icon={<Gauge />} label="Service health" value={`${serviceHealth}%`} detail="dựa trên trạng thái asset" tone="info" />
-        <MetricCard icon={<Cpu />} label="Open alerts" value={openAlerts.length} detail="warning trở lên cần xử lý" tone="warning" />
+        <MetricCard icon={<CheckCircle2 />} label={t("onlineAssets")} value={`${online}/${assets.length}`} detail={t("responding")} tone="ok" />
+        <MetricCard icon={<AlertTriangle />} label={t("criticalAlerts")} value={critical} detail={t("unacknowledged")} tone="critical" />
+        <MetricCard icon={<Gauge />} label={t("serviceHealth")} value={`${serviceHealth}%`} detail={t("basedOnAssetStatus")} tone="info" />
+        <MetricCard icon={<Cpu />} label={t("openAlerts")} value={openAlerts.length} detail={t("warningNeedsAction")} tone="warning" />
       </div>
       <section className="panel">
         <div className="panel-title">
-          <h2>Asset status</h2>
-          <span>{assets.length} monitored objects</span>
+          <h2>{t("assetStatus")}</h2>
+          <span>{assets.length} {t("monitoredObjects")}</span>
         </div>
-        <AssetTable assets={assets} onSelectAsset={onSelectAsset} compact />
+        <AssetTable assets={assets} onSelectAsset={onSelectAsset} compact t={t} locale={locale} />
       </section>
       <section className="panel">
         <div className="panel-title">
-          <h2>Recent alerts</h2>
-          <span>{openAlerts.length} open</span>
+          <h2>{t("recentAlerts")}</h2>
+          <span>{openAlerts.length} {t("open")}</span>
         </div>
-        <AlertList alerts={alerts.slice(0, 5)} />
+        <AlertList alerts={alerts.slice(0, 5)} t={t} locale={locale} />
       </section>
     </>
   );
 }
 
-function AssetsPage({ assets, selectedAsset, setSelectedAsset, token }) {
+function AssetsPage({ assets, selectedAsset, setSelectedAsset, token, t, locale }) {
   const [type, setType] = useState("all");
   const [status, setStatus] = useState("all");
   const [query, setQuery] = useState("");
@@ -261,9 +416,9 @@ function AssetsPage({ assets, selectedAsset, setSelectedAsset, token }) {
 
   return (
     <>
-      <PageHeader title="Hosts & Devices" subtitle="Lọc, kiểm tra trạng thái và xem metric theo từng asset." />
+      <PageHeader title={t("assets")} subtitle={t("assetsSubtitle")} />
       <div className="toolbar">
-        <div className="searchbox"><Search size={16} /><input placeholder="Tìm theo tên hoặc IP" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
+        <div className="searchbox"><Search size={16} /><input placeholder={t("searchPlaceholder")} value={query} onChange={(event) => setQuery(event.target.value)} /></div>
         <select value={type} onChange={(event) => setType(event.target.value)}>
           <option value="all">All types</option>
           <option value="server">Server</option>
@@ -281,25 +436,25 @@ function AssetsPage({ assets, selectedAsset, setSelectedAsset, token }) {
       </div>
       <div className="split">
         <section className="panel">
-          <AssetTable assets={filtered} onSelectAsset={setSelectedAsset} selectedAsset={selectedAsset} />
+          <AssetTable assets={filtered} onSelectAsset={setSelectedAsset} selectedAsset={selectedAsset} t={t} locale={locale} />
         </section>
-        <AssetDetail detail={detail} metrics={metrics} />
+        <AssetDetail detail={detail} metrics={metrics} t={t} locale={locale} />
       </div>
     </>
   );
 }
 
-function AssetTable({ assets, onSelectAsset, selectedAsset, compact = false }) {
+function AssetTable({ assets, onSelectAsset, selectedAsset, compact = false, t, locale }) {
   return (
     <div className="table-wrap">
       <table>
         <thead>
           <tr>
-            <th>Asset</th>
-            <th>IP / Endpoint</th>
-            <th>Status</th>
-            <th>Severity</th>
-            {!compact ? <th>Last check</th> : null}
+            <th>{t("asset")}</th>
+            <th>{t("ipEndpoint")}</th>
+            <th>{t("status")}</th>
+            <th>{t("severity")}</th>
+            {!compact ? <th>{t("lastCheck")}</th> : null}
           </tr>
         </thead>
         <tbody>
@@ -314,7 +469,7 @@ function AssetTable({ assets, onSelectAsset, selectedAsset, compact = false }) {
               <td>{asset.ip}</td>
               <td><span className={`status-dot ${asset.status}`}></span>{asset.status}</td>
               <td><Badge tone={asset.severity}>{asset.severity}</Badge></td>
-              {!compact ? <td>{formatTime(asset.lastCheck)}</td> : null}
+              {!compact ? <td>{formatTime(asset.lastCheck, locale)}</td> : null}
             </tr>
           ))}
         </tbody>
@@ -323,13 +478,13 @@ function AssetTable({ assets, onSelectAsset, selectedAsset, compact = false }) {
   );
 }
 
-function AssetDetail({ detail, metrics }) {
+function AssetDetail({ detail, metrics, t, locale }) {
   if (!detail || !metrics) {
     return (
       <section className="panel detail-empty">
         <Network size={34} />
-        <h2>Chọn một asset</h2>
-        <p>Xem metric, interface/service và cảnh báo gần nhất.</p>
+        <h2>{t("selectAsset")}</h2>
+        <p>{t("selectAssetHelp")}</p>
       </section>
     );
   }
@@ -347,20 +502,20 @@ function AssetDetail({ detail, metrics }) {
         <MetricPill label="CPU" value={`${metrics.current.cpu}%`} />
         <MetricPill label="RAM" value={`${metrics.current.memory}%`} />
         <MetricPill label="Disk" value={`${metrics.current.disk}%`} />
-        <MetricPill label="Latency" value={`${metrics.current.latency}ms`} />
-        <MetricPill label="Loss" value={`${metrics.current.packetLoss}%`} />
-        <MetricPill label="Uptime" value={`${metrics.current.uptime}%`} />
+        <MetricPill label={t("latency")} value={`${metrics.current.latency}ms`} />
+        <MetricPill label={t("loss")} value={`${metrics.current.packetLoss}%`} />
+        <MetricPill label={t("uptime")} value={`${metrics.current.uptime}%`} />
       </div>
       <div className="chart-grid">
-        <ChartPanel title="CPU" series={metrics.history.cpu} unit="%" color="#ef4444" />
-        <ChartPanel title="Memory" series={metrics.history.memory} unit="%" color="#2563eb" />
-        <ChartPanel title="Latency" series={metrics.history.latency} unit="ms" color="#f59e0b" />
-        <ChartPanel title="Traffic in" series={metrics.history.trafficIn} unit="Mb" color="#16a34a" />
+        <ChartPanel title="CPU" series={metrics.history.cpu} unit="%" color="#ef4444" t={t} />
+        <ChartPanel title={t("memory")} series={metrics.history.memory} unit="%" color="#2563eb" t={t} />
+        <ChartPanel title={t("latency")} series={metrics.history.latency} unit="ms" color="#f59e0b" t={t} />
+        <ChartPanel title={t("trafficIn")} series={metrics.history.trafficIn} unit="Mb" color="#16a34a" t={t} />
       </div>
-      <h3>Interfaces / Services</h3>
+      <h3>{t("interfacesServices")}</h3>
       <div className="chips">{items.map((item) => <span key={item}>{item}</span>)}</div>
-      <h3>Recent alerts</h3>
-      <AlertList alerts={detail.alerts} dense />
+      <h3>{t("recentAlerts")}</h3>
+      <AlertList alerts={detail.alerts} dense t={t} locale={locale} />
     </section>
   );
 }
@@ -369,11 +524,11 @@ function MetricPill({ label, value }) {
   return <div className="metric-pill"><span>{label}</span><strong>{value}</strong></div>;
 }
 
-function ChartPanel({ title, series, unit, color }) {
-  return <div className="chart-panel"><div><strong>{title}</strong><span>last 24 samples</span></div><MiniChart series={series} unit={unit} color={color} /></div>;
+function ChartPanel({ title, series, unit, color, t }) {
+  return <div className="chart-panel"><div><strong>{title}</strong><span>{t("lastSamples")}</span></div><MiniChart series={series} unit={unit} color={color} t={t} /></div>;
 }
 
-function AlertsPage({ alerts, refresh, token }) {
+function AlertsPage({ alerts, refresh, token, t, locale }) {
   const [severity, setSeverity] = useState("all");
   const [ack, setAck] = useState("all");
   const filtered = alerts.filter((alert) => {
@@ -389,7 +544,7 @@ function AlertsPage({ alerts, refresh, token }) {
 
   return (
     <>
-      <PageHeader title="Alerts" subtitle="Theo dõi severity và acknowledge sự cố đang mở." />
+      <PageHeader title={t("alerts")} subtitle={t("alertsSubtitle")} />
       <div className="toolbar">
         <select value={severity} onChange={(event) => setSeverity(event.target.value)}>
           <option value="all">All severities</option>
@@ -397,18 +552,18 @@ function AlertsPage({ alerts, refresh, token }) {
         </select>
         <select value={ack} onChange={(event) => setAck(event.target.value)}>
           <option value="all">All states</option>
-          <option value="false">Unacknowledged</option>
+          <option value="false">{t("unacknowledged")}</option>
           <option value="true">Acknowledged</option>
         </select>
       </div>
       <section className="panel">
-        <AlertList alerts={filtered} onAck={acknowledge} />
+        <AlertList alerts={filtered} onAck={acknowledge} t={t} locale={locale} />
       </section>
     </>
   );
 }
 
-function AlertList({ alerts, onAck, dense = false }) {
+function AlertList({ alerts, onAck, dense = false, t, locale }) {
   const sorted = [...alerts].sort((a, b) => severityOrder[b.severity] - severityOrder[a.severity]);
   return (
     <div className={`alert-list ${dense ? "dense" : ""}`}>
@@ -418,26 +573,26 @@ function AlertList({ alerts, onAck, dense = false }) {
           <div>
             <strong>{alert.title}</strong>
             <p>{alert.message}</p>
-            <span>{alert.asset?.name || alert.assetId} · {formatTime(alert.createdAt)}</span>
+            <span>{alert.asset?.name || alert.assetId} · {formatTime(alert.createdAt, locale)}</span>
           </div>
-          {onAck && !alert.acknowledged ? <button onClick={() => onAck(alert.id)}>Ack</button> : <small>{alert.acknowledged ? "Acknowledged" : "Open"}</small>}
+          {onAck && !alert.acknowledged ? <button onClick={() => onAck(alert.id)}>{t("ack")}</button> : <small>{alert.acknowledged ? t("acknowledged") : t("open")}</small>}
         </article>
       ))}
     </div>
   );
 }
 
-function SettingsPage() {
+function SettingsPage({ t }) {
   return (
     <>
-      <PageHeader title="Settings" subtitle="Cấu hình runtime và adapter dữ liệu cho MVP." />
+      <PageHeader title={t("settings")} subtitle={t("settingsSubtitle")} />
       <section className="panel settings-panel">
-        <h2>Metrics provider</h2>
-        <p>Provider hiện tại là <strong>MockMetricsProvider</strong>. Khi có Prometheus, thay adapter backend để gọi PromQL qua cùng API frontend.</p>
+        <h2>{t("metricsProvider")}</h2>
+        <p>{t("metricsProviderText")} <strong>MockMetricsProvider</strong>. {t("metricsProviderHelp")}</p>
         <div className="config-list">
-          <span>API base</span><code>{API_BASE}</code>
-          <span>Auth mode</span><code>single admin JWT</code>
-          <span>Polling</span><code>10s asset detail refresh</code>
+          <span>{t("apiBase")}</span><code>{API_BASE}</code>
+          <span>{t("authMode")}</span><code>{t("authModeValue")}</code>
+          <span>{t("polling")}</span><code>{t("pollingValue")}</code>
         </div>
       </section>
     </>
@@ -455,6 +610,7 @@ function App() {
   const [assets, setAssets] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [selectedAsset, setSelectedAsset] = useState(null);
+  const { locale, setLocale, t } = useI18n();
 
   const refresh = async () => {
     if (!token) return;
@@ -479,14 +635,14 @@ function App() {
   }, [token]);
 
   const currentPage = useMemo(() => {
-    if (page === "assets") return <AssetsPage assets={assets} selectedAsset={selectedAsset} setSelectedAsset={setSelectedAsset} token={token} />;
-    if (page === "alerts") return <AlertsPage alerts={alerts} refresh={refresh} token={token} />;
-    if (page === "settings") return <SettingsPage />;
-    return <Dashboard assets={assets} alerts={alerts} onSelectAsset={(id) => { setSelectedAsset(id); setPage("assets"); }} />;
-  }, [page, assets, alerts, selectedAsset, token]);
+    if (page === "assets") return <AssetsPage assets={assets} selectedAsset={selectedAsset} setSelectedAsset={setSelectedAsset} token={token} t={t} locale={locale} />;
+    if (page === "alerts") return <AlertsPage alerts={alerts} refresh={refresh} token={token} t={t} locale={locale} />;
+    if (page === "settings") return <SettingsPage t={t} />;
+    return <Dashboard assets={assets} alerts={alerts} onSelectAsset={(id) => { setSelectedAsset(id); setPage("assets"); }} t={t} locale={locale} />;
+  }, [page, assets, alerts, selectedAsset, token, t, locale]);
 
   if (!token) {
-    return <Login onLogin={(nextToken, nextUser) => { setToken(nextToken); setUser(nextUser); }} />;
+    return <Login onLogin={(nextToken, nextUser) => { setToken(nextToken); setUser(nextUser); }} t={t} locale={locale} setLocale={setLocale} />;
   }
 
   return (
@@ -494,6 +650,9 @@ function App() {
       page={page}
       setPage={setPage}
       user={user}
+      t={t}
+      locale={locale}
+      setLocale={setLocale}
       onLogout={() => {
         localStorage.removeItem("network-monitor-token");
         setToken(null);
