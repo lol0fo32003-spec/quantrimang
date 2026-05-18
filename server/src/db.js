@@ -39,10 +39,12 @@ export async function migrate() {
       environment VARCHAR(80) NULL,
       last_error TEXT NULL,
       last_scrape_at DATETIME NULL,
+      metadata JSON NULL,
       updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+  await ensureColumn("hosts", "metadata", "JSON NULL");
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS thresholds (
@@ -72,6 +74,18 @@ export async function migrate() {
       CONSTRAINT fk_alerts_host FOREIGN KEY (host_id) REFERENCES hosts(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+}
+
+async function ensureColumn(table, column, definition) {
+  const [rows] = await pool.query(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+    [table, column]
+  );
+
+  if (rows.length === 0) {
+    await pool.query(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
 }
 
 export async function seedAdmin({ username, password }) {

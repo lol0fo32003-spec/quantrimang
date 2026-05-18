@@ -6,6 +6,7 @@ import {
   Bell,
   CheckCircle2,
   Cpu,
+  Database,
   Gauge,
   HardDrive,
   LayoutDashboard,
@@ -77,6 +78,14 @@ const messages = {
     uptime: "Uptime",
     loadAverage: "Load average",
     connectionStatus: "Connection",
+    serviceUnit: "Systemd unit",
+    endpoint: "Endpoint",
+    port: "Port",
+    protocol: "Protocol",
+    portCheck: "Port check",
+    unitCheck: "Unit check",
+    monitorMethod: "Monitor method",
+    lastError: "Last error",
     trafficIn: "Traffic in",
     trafficOut: "Traffic out",
     interfacesServices: "Interfaces / Services",
@@ -147,6 +156,14 @@ const messages = {
     uptime: "Uptime",
     loadAverage: "Load average",
     connectionStatus: "Kết nối",
+    serviceUnit: "Systemd unit",
+    endpoint: "Endpoint",
+    port: "Port",
+    protocol: "Giao thức",
+    portCheck: "Kiểm tra port",
+    unitCheck: "Kiểm tra unit",
+    monitorMethod: "Cách giám sát",
+    lastError: "Lỗi gần nhất",
     trafficIn: "Traffic vào",
     trafficOut: "Traffic ra",
     interfacesServices: "Interfaces / Services",
@@ -222,6 +239,7 @@ function assetIcon(type) {
   if (type === "router") return <Router size={18} />;
   if (type === "switch") return <Network size={18} />;
   if (type === "firewall") return <Shield size={18} />;
+  if (type === "database") return <Database size={18} />;
   return <Wifi size={18} />;
 }
 
@@ -461,6 +479,7 @@ function AssetsPage({ assets, selectedAsset, setSelectedAsset, token, t, locale 
           <option value="router">Router</option>
           <option value="switch">Switch</option>
           <option value="firewall">Firewall</option>
+          <option value="database">Database</option>
           <option value="service">Service</option>
         </select>
         <select value={status} onChange={(event) => setStatus(event.target.value)}>
@@ -529,6 +548,36 @@ function AssetDetail({ detail, metrics, t, locale }) {
 
   const asset = detail.asset;
   const items = asset.interfaces || asset.services || [];
+  const isServiceAsset = ["service", "database", "firewall"].includes(asset.type) || asset.prometheusInstance?.startsWith("local:");
+
+  if (isServiceAsset) {
+    return (
+      <section className="panel asset-detail">
+        <div className="detail-heading">
+          <div>{assetIcon(asset.type)}<div><h2>{asset.name}</h2><span>{asset.ip}</span></div></div>
+          <Badge tone={asset.severity}>{asset.severity}</Badge>
+        </div>
+        <div className="service-detail-grid">
+          <MetricPill label={t("connectionStatus")} value={asset.status} />
+          <MetricPill label={t("endpoint")} value={asset.metadata?.endpoint || asset.ip} />
+          <MetricPill label={t("serviceUnit")} value={asset.metadata?.unit || "-"} />
+          <MetricPill label={t("port")} value={asset.metadata?.port || "-"} />
+          <MetricPill label={t("protocol")} value={(asset.metadata?.protocol || "-").toUpperCase()} />
+          <MetricPill label={t("unitCheck")} value={asset.metadata?.unitActive === false ? "failed" : "active"} />
+          <MetricPill label={t("portCheck")} value={asset.metadata?.portOpen === false ? "closed" : "open"} />
+          <MetricPill label={t("monitorMethod")} value={asset.metadata?.monitoredBy || "systemctl + port check"} />
+        </div>
+        {asset.lastError ? (
+          <div className="service-error">
+            <strong>{t("lastError")}</strong>
+            <span>{asset.lastError}</span>
+          </div>
+        ) : null}
+        <h3>{t("recentAlerts")}</h3>
+        <AlertList alerts={detail.alerts} dense t={t} locale={locale} />
+      </section>
+    );
+  }
 
   return (
     <section className="panel asset-detail">

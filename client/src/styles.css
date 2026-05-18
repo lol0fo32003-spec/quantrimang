@@ -428,6 +428,12 @@ tbody tr.selected {
   gap: 8px;
 }
 
+.service-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .metric-pill {
   border: 1px solid #e2e8f0;
   border-radius: 7px;
@@ -443,6 +449,21 @@ tbody tr.selected {
 
 .metric-pill strong {
   font-size: 18px;
+  overflow-wrap: anywhere;
+}
+
+.service-error {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid #fecaca;
+  border-radius: 7px;
+  color: #991b1b;
+  background: #fef2f2;
+}
+
+.service-error span {
+  overflow-wrap: anywhere;
 }
 
 .chart-grid {
@@ -595,6 +616,7 @@ code {
 
   .metric-grid,
   .small-metrics,
+  .service-detail-grid,
   .chart-grid {
     grid-template-columns: 1fr;
   }

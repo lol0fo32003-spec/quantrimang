@@ -3,6 +3,9 @@ import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
 import jwt from "jsonwebtoken";
+import net from "net";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { migrate, pool, seedAdmin, seedThresholds } from "./db.js";
 import { PrometheusMetricsProvider } from "./metricsProvider.js";
 
@@ -15,6 +18,21 @@ const adminUser = process.env.ADMIN_USER || "admin";
 const adminPassword = process.env.ADMIN_PASSWORD || "admin123";
 const prometheusUrl = process.env.PROMETHEUS_URL || "http://localhost:9090";
 const metricsProvider = new PrometheusMetricsProvider({ baseUrl: prometheusUrl });
+const execFileAsync = promisify(execFile);
+const localHostIp = process.env.LOCAL_HOST_IP || "192.168.31.160";
+const localOsName = process.env.LOCAL_OS_NAME || "Ubuntu Server";
+const localServices = [
+  { id: "local-service-mysql", name: "MySQL Database", type: "database", unit: "mysql", port: 3306, ip: "127.0.0.1" },
+  { id: "local-service-firewalld", name: "firewalld", type: "firewall", unit: "firewalld", ip: localHostIp },
+  { id: "local-service-apache", name: "Apache HTTP", type: "service", unit: "apache2", port: 80, ip: localHostIp },
+  { id: "local-service-ssh", name: "SSH", type: "service", unit: "ssh", port: 22, ip: localHostIp },
+  { id: "local-service-prometheus", name: "Prometheus", type: "service", unit: "prometheus", port: 9090, ip: localHostIp },
+  { id: "local-service-zabbix-server", name: "Zabbix Server", type: "service", unit: "zabbix-server", port: 10051, ip: localHostIp },
+  { id: "local-service-zabbix-agent", name: "Zabbix Agent", type: "service", unit: "zabbix-agent", port: 10050, ip: localHostIp },
+  { id: "local-service-snmpd", name: "SNMP Daemon", type: "service", unit: "snmpd", port: 161, ip: "127.0.0.1", protocol: "udp" },
+  { id: "local-service-api", name: "Network Monitor API", type: "service", port: Number(port), ip: "127.0.0.1" },
+  { id: "local-service-web", name: "Network Monitor Web", type: "service", port: 5173, ip: "127.0.0.1" }
+];
 
 app.use(cors({ origin: process.env.CLIENT_ORIGIN || "http://localhost:5173" }));
 app.use(express.json());
@@ -32,6 +50,7 @@ function toHost(row) {
     environment: row.environment,
     lastError: row.last_error,
     lastCheck: row.last_scrape_at || row.updated_at,
+    metadata: typeof row.metadata === "string" ? JSON.parse(row.metadata || "{}") : row.metadata || {},
     severity: row.severity || "OK",
     openAlerts: Number(row.open_alerts || 0)
   };
@@ -58,6 +77,106 @@ function targetToHost(target, index) {
     lastError: target.lastError || null,
     lastScrapeAt: target.lastScrape ? new Date(target.lastScrape) : null
   };
+}
+
+async function isUnitActive(unit) {
+  if (!unit) return true;
+  try {
+    const { stdout } = await execFileAsync("systemctl", ["is-active", unit]);
+    return stdout.trim() === "active";
+  } catch {
+    return false;
+  }
+}
+
+async function isTcpPortOpen(host, targetPort) {
+  if (!targetPort) return true;
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host, port: targetPort, timeout: 900 });
+    socket.once("connect", () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.once("timeout", () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.once("error", () => resolve(false));
+  });
+}
+
+async function syncLocalServices() {
+  for (const service of localServices) {
+    const unitActive = await isUnitActive(service.unit);
+    const portOpen = service.protocol === "udp" ? true : await isTcpPortOpen(service.ip, service.port);
+    const online = unitActive && portOpen;
+    const lastError = online
+      ? null
+      : [
+          service.unit && !unitActive ? `systemd unit ${service.unit} is not active` : null,
+          service.port && !portOpen ? `port ${service.port} is not reachable on ${service.ip}` : null
+        ]
+          .filter(Boolean)
+          .join("; ");
+
+    await pool.query(
+      `INSERT INTO hosts
+        (id, name, ip, os, type, status, prometheus_instance, job, environment, last_error, last_scrape_at, metadata)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'local-services', 'local', ?, NOW(), ?)
+       ON DUPLICATE KEY UPDATE
+        name = VALUES(name),
+        ip = VALUES(ip),
+        os = VALUES(os),
+        type = VALUES(type),
+        status = VALUES(status),
+        job = VALUES(job),
+        environment = VALUES(environment),
+        last_error = VALUES(last_error),
+        last_scrape_at = NOW(),
+        metadata = VALUES(metadata)`,
+      [
+        service.id,
+        service.name,
+        service.ip,
+        localOsName,
+        service.type,
+        online ? "online" : "offline",
+        `local:${service.id}`,
+        lastError,
+        JSON.stringify({
+          unit: service.unit || null,
+          port: service.port || null,
+          protocol: service.protocol || "tcp",
+          endpoint: service.port ? `${service.protocol || "tcp"}://${service.ip}:${service.port}` : service.ip,
+          unitActive,
+          portOpen,
+          monitoredBy: "systemctl + port check"
+        })
+      ]
+    );
+
+    if (!online) {
+      await pool.query(
+        `INSERT INTO alerts (host_id, metric, severity, title, message)
+         SELECT ?, 'service', 'CRITICAL', ?, ?
+         WHERE NOT EXISTS (
+          SELECT 1 FROM alerts
+          WHERE host_id = ? AND metric = 'service' AND acknowledged = 0
+         )`,
+        [service.id, `${service.name} service critical`, lastError || `${service.name} is offline`, service.id]
+      );
+    } else {
+      await pool.query(
+        "UPDATE alerts SET acknowledged = 1, acknowledged_at = NOW() WHERE host_id = ? AND metric = 'service' AND acknowledged = 0",
+        [service.id]
+      );
+    }
+  }
+}
+
+async function syncAssets() {
+  await syncPrometheusTargets();
+  await syncLocalServices();
 }
 
 async function syncPrometheusTargets() {
@@ -118,6 +237,11 @@ async function syncPrometheusTargets() {
           host.lastError || `Prometheus target ${host.prometheusInstance} is offline`,
           host.id
         ]
+      );
+    } else {
+      await pool.query(
+        "UPDATE alerts SET acknowledged = 1, acknowledged_at = NOW() WHERE host_id = ? AND metric = 'connection' AND acknowledged = 0",
+        [host.id]
       );
     }
   }
@@ -241,6 +365,28 @@ async function evaluateAlerts(host, metrics) {
 }
 
 async function hostMetrics(host) {
+  if (host.prometheusInstance?.startsWith("local:")) {
+    return {
+      assetId: host.id,
+      sampledAt: new Date().toISOString(),
+      source: "local-service",
+      instance: host.prometheusInstance,
+      current: {
+        cpu: 0,
+        memory: 0,
+        disk: 0,
+        uptime: host.status === "online" ? 100 : 0,
+        loadAverage: 0,
+        latency: 0,
+        packetLoss: 0,
+        trafficIn: 0,
+        trafficOut: 0,
+        httpStatus: host.status === "online" ? 200 : 503
+      },
+      history: { cpu: [], memory: [], disk: [], latency: [], trafficIn: [], trafficOut: [] }
+    };
+  }
+
   if (host.status !== "online") {
     return {
       assetId: host.id,
@@ -306,7 +452,7 @@ app.get("/api/me", authenticate, (req, res) => {
 });
 
 app.get("/api/assets", authenticate, async (req, res) => {
-  await syncPrometheusTargets();
+  await syncAssets();
   const assets = await listHosts(req.query);
   const withMetrics = await Promise.all(
     assets.map(async (asset) => {
@@ -322,7 +468,7 @@ app.get("/api/assets", authenticate, async (req, res) => {
 });
 
 app.get("/api/assets/:id", authenticate, async (req, res) => {
-  await syncPrometheusTargets();
+  await syncAssets();
   const asset = await getHost(req.params.id);
   if (!asset) {
     return res.status(404).json({ error: "Asset not found" });
@@ -371,7 +517,7 @@ app.post("/api/alerts/:id/ack", authenticate, async (req, res) => {
 await migrate();
 await seedAdmin({ username: adminUser, password: adminPassword });
 await seedThresholds();
-await syncPrometheusTargets();
+await syncAssets();
 
 app.listen(port, () => {
   console.log(`Network monitor API listening on http://localhost:${port}`);
