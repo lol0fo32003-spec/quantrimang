@@ -91,7 +91,8 @@ button {
 
 .login-panel button,
 .alert-row button,
-.sidebar-user button {
+.sidebar-user button,
+.threshold-row button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -587,6 +588,55 @@ code {
   background: #eef2f6;
 }
 
+.threshold-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.threshold-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) 120px 120px 130px 88px;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 7px;
+}
+
+.threshold-head {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  background: #f8fafc;
+}
+
+.threshold-row input[type="number"] {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  padding: 0 10px;
+}
+
+.threshold-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #334155;
+  font-weight: 650;
+}
+
+.threshold-row button {
+  min-height: 38px;
+  border: 0;
+  background: #0f766e;
+  color: #ffffff;
+  font-weight: 750;
+  border-radius: 7px;
+}
+
 @media (max-width: 1100px) {
   .metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -627,5 +677,13 @@ code {
 
   .toolbar select {
     width: 100%;
+  }
+
+  .threshold-row {
+    grid-template-columns: 1fr;
+  }
+
+  .threshold-head {
+    display: none;
   }
 }

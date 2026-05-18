@@ -100,6 +100,18 @@ const messages = {
     metricsProvider: "Metrics provider",
     metricsProviderText: "Current provider is",
     metricsProviderHelp: "When Prometheus is available, swap the backend adapter to call PromQL through the same frontend API.",
+    prometheusProvider: "PrometheusMetricsProvider",
+    thresholds: "Alert thresholds",
+    thresholdsHelp: "Set warning and critical limits used when backend evaluates live metrics.",
+    metric: "Metric",
+    warning: "Warning",
+    critical: "Critical",
+    enabled: "Enabled",
+    save: "Save",
+    saving: "Saving...",
+    saved: "Saved",
+    disabled: "Disabled",
+    loadError: "Could not load data",
     apiBase: "API base",
     authMode: "Auth mode",
     polling: "Polling",
@@ -178,6 +190,18 @@ const messages = {
     metricsProvider: "Provider metric",
     metricsProviderText: "Provider hiện tại là",
     metricsProviderHelp: "Khi có Prometheus, thay adapter backend để gọi PromQL qua cùng API frontend.",
+    prometheusProvider: "PrometheusMetricsProvider",
+    thresholds: "Ngưỡng cảnh báo",
+    thresholdsHelp: "Thiết lập ngưỡng warning và critical để backend đánh giá metric thật.",
+    metric: "Metric",
+    warning: "Warning",
+    critical: "Critical",
+    enabled: "Bật",
+    save: "Lưu",
+    saving: "Đang lưu...",
+    saved: "Đã lưu",
+    disabled: "Tắt",
+    loadError: "Không tải được dữ liệu",
     apiBase: "API base",
     authMode: "Chế độ auth",
     polling: "Polling",
@@ -672,17 +696,100 @@ function AlertList({ alerts, onAck, dense = false, t, locale }) {
   );
 }
 
-function SettingsPage({ t }) {
+function SettingsPage({ t, token }) {
+  const [thresholds, setThresholds] = useState([]);
+  const [status, setStatus] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    apiFetch("/api/thresholds", token)
+      .then((data) => setThresholds(data.thresholds))
+      .catch((err) => setError(err.message || t("loadError")));
+  }, [token]);
+
+  function updateThreshold(metric, patch) {
+    setThresholds((current) =>
+      current.map((threshold) => (threshold.metric === metric ? { ...threshold, ...patch } : threshold))
+    );
+  }
+
+  async function saveThreshold(threshold) {
+    setStatus(`${t("saving")} ${threshold.metric}`);
+    setError("");
+    try {
+      const data = await apiFetch(`/api/thresholds/${threshold.metric}`, token, {
+        method: "PUT",
+        body: JSON.stringify({
+          warningValue: Number(threshold.warningValue),
+          criticalValue: Number(threshold.criticalValue),
+          enabled: threshold.enabled
+        })
+      });
+      updateThreshold(threshold.metric, data.threshold);
+      setStatus(`${t("saved")} ${threshold.metric}`);
+    } catch (err) {
+      setStatus("");
+      setError(err.message);
+    }
+  }
+
   return (
     <>
       <PageHeader title={t("settings")} subtitle={t("settingsSubtitle")} />
       <section className="panel settings-panel">
         <h2>{t("metricsProvider")}</h2>
-        <p>{t("metricsProviderText")} <strong>MockMetricsProvider</strong>. {t("metricsProviderHelp")}</p>
+        <p>{t("metricsProviderText")} <strong>{t("prometheusProvider")}</strong>. {t("metricsProviderHelp")}</p>
         <div className="config-list">
           <span>{t("apiBase")}</span><code>{API_BASE}</code>
           <span>{t("authMode")}</span><code>{t("authModeValue")}</code>
           <span>{t("polling")}</span><code>{t("pollingValue")}</code>
+        </div>
+      </section>
+      <section className="panel settings-panel">
+        <div className="panel-title">
+          <div>
+            <h2>{t("thresholds")}</h2>
+            <span>{t("thresholdsHelp")}</span>
+          </div>
+          {status ? <small>{status}</small> : null}
+        </div>
+        {error ? <div className="form-error">{error}</div> : null}
+        <div className="threshold-list">
+          <div className="threshold-row threshold-head">
+            <span>{t("metric")}</span>
+            <span>{t("warning")}</span>
+            <span>{t("critical")}</span>
+            <span>{t("enabled")}</span>
+            <span></span>
+          </div>
+          {thresholds.map((threshold) => (
+            <div className="threshold-row" key={threshold.metric}>
+              <strong>{threshold.metric}</strong>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={threshold.warningValue}
+                onChange={(event) => updateThreshold(threshold.metric, { warningValue: event.target.value })}
+              />
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={threshold.criticalValue}
+                onChange={(event) => updateThreshold(threshold.metric, { criticalValue: event.target.value })}
+              />
+              <label className="threshold-toggle">
+                <input
+                  type="checkbox"
+                  checked={threshold.enabled}
+                  onChange={(event) => updateThreshold(threshold.metric, { enabled: event.target.checked })}
+                />
+                <span>{threshold.enabled ? t("enabled") : t("disabled")}</span>
+              </label>
+              <button onClick={() => saveThreshold(threshold)}>{t("save")}</button>
+            </div>
+          ))}
         </div>
       </section>
     </>
@@ -727,7 +834,7 @@ function App() {
   const currentPage = useMemo(() => {
     if (page === "assets") return <AssetsPage assets={assets} selectedAsset={selectedAsset} setSelectedAsset={setSelectedAsset} token={token} t={t} locale={locale} />;
     if (page === "alerts") return <AlertsPage alerts={alerts} refresh={refresh} token={token} t={t} locale={locale} />;
-    if (page === "settings") return <SettingsPage t={t} />;
+    if (page === "settings") return <SettingsPage t={t} token={token} />;
     return <Dashboard assets={assets} alerts={alerts} onSelectAsset={(id) => { setSelectedAsset(id); setPage("assets"); }} t={t} locale={locale} />;
   }, [page, assets, alerts, selectedAsset, token, t, locale]);
 

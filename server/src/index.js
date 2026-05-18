@@ -501,6 +501,59 @@ app.get("/api/alerts", authenticate, async (req, res) => {
   res.json({ alerts: await listAlerts(req.query) });
 });
 
+app.get("/api/thresholds", authenticate, async (_req, res) => {
+  const [rows] = await pool.query(
+    "SELECT id, metric, warning_value AS warningValue, critical_value AS criticalValue, enabled FROM thresholds ORDER BY metric"
+  );
+  res.json({
+    thresholds: rows.map((row) => ({
+      ...row,
+      warningValue: Number(row.warningValue),
+      criticalValue: Number(row.criticalValue),
+      enabled: Boolean(row.enabled)
+    }))
+  });
+});
+
+app.put("/api/thresholds/:metric", authenticate, async (req, res) => {
+  const { warningValue, criticalValue, enabled } = req.body;
+  const warning = Number(warningValue);
+  const critical = Number(criticalValue);
+
+  if (!Number.isFinite(warning) || !Number.isFinite(critical)) {
+    return res.status(400).json({ error: "Warning and critical values must be numbers" });
+  }
+
+  if (warning >= critical) {
+    return res.status(400).json({ error: "Warning value must be lower than critical value" });
+  }
+
+  const [result] = await pool.query(
+    `UPDATE thresholds
+     SET warning_value = ?, critical_value = ?, enabled = ?
+     WHERE metric = ?`,
+    [warning, critical, enabled ? 1 : 0, req.params.metric]
+  );
+
+  if (result.affectedRows === 0) {
+    return res.status(404).json({ error: "Threshold not found" });
+  }
+
+  const [rows] = await pool.query(
+    "SELECT id, metric, warning_value AS warningValue, critical_value AS criticalValue, enabled FROM thresholds WHERE metric = ?",
+    [req.params.metric]
+  );
+  const threshold = rows[0];
+  res.json({
+    threshold: {
+      ...threshold,
+      warningValue: Number(threshold.warningValue),
+      criticalValue: Number(threshold.criticalValue),
+      enabled: Boolean(threshold.enabled)
+    }
+  });
+});
+
 app.post("/api/alerts/:id/ack", authenticate, async (req, res) => {
   const [result] = await pool.query(
     "UPDATE alerts SET acknowledged = 1, acknowledged_at = NOW() WHERE id = ?",
