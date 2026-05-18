@@ -34,7 +34,7 @@ const localServices = [
   { id: "local-service-web", name: "Network Monitor Web", type: "service", port: 5173, ip: "127.0.0.1" }
 ];
 
-app.use(cors({ origin: process.env.CLIENT_ORIGIN || "http://localhost:5173" }));
+app.use(cors({ origin: "*" }));
 app.use(express.json());
 
 function toHost(row) {
@@ -336,7 +336,17 @@ async function listAlerts({ severity, acknowledged, hostId } = {}) {
 }
 
 async function evaluateAlerts(host, metrics) {
-  const [thresholds] = await pool.query("SELECT * FROM thresholds WHERE enabled = 1");
+  const [thresholds] = await pool.query(
+    `SELECT
+      t.metric,
+      COALESCE(ht.warning_value, t.warning_value) AS warning_value,
+      COALESCE(ht.critical_value, t.critical_value) AS critical_value,
+      COALESCE(ht.enabled, t.enabled) AS enabled
+     FROM thresholds t
+     LEFT JOIN host_thresholds ht ON ht.metric = t.metric AND ht.host_id = ?
+     WHERE COALESCE(ht.enabled, t.enabled) = 1`,
+    [host.id]
+  );
   const current = metrics.current || {};
 
   for (const threshold of thresholds) {
@@ -513,6 +523,84 @@ app.get("/api/thresholds", authenticate, async (_req, res) => {
       enabled: Boolean(row.enabled)
     }))
   });
+});
+
+app.get("/api/assets/:id/thresholds", authenticate, async (req, res) => {
+  const asset = await getHost(req.params.id);
+  if (!asset) {
+    return res.status(404).json({ error: "Asset not found" });
+  }
+
+  const [rows] = await pool.query(
+    `SELECT
+      t.id,
+      t.metric,
+      t.warning_value AS defaultWarningValue,
+      t.critical_value AS defaultCriticalValue,
+      t.enabled AS defaultEnabled,
+      ht.warning_value AS warningValue,
+      ht.critical_value AS criticalValue,
+      ht.enabled AS enabled,
+      ht.id AS overrideId
+     FROM thresholds t
+     LEFT JOIN host_thresholds ht ON ht.metric = t.metric AND ht.host_id = ?
+     ORDER BY t.metric`,
+    [asset.id]
+  );
+
+  res.json({
+    asset,
+    thresholds: rows.map((row) => ({
+      id: row.id,
+      metric: row.metric,
+      defaultWarningValue: Number(row.defaultWarningValue),
+      defaultCriticalValue: Number(row.defaultCriticalValue),
+      defaultEnabled: Boolean(row.defaultEnabled),
+      warningValue: row.warningValue === null ? Number(row.defaultWarningValue) : Number(row.warningValue),
+      criticalValue: row.criticalValue === null ? Number(row.defaultCriticalValue) : Number(row.criticalValue),
+      enabled: row.enabled === null ? Boolean(row.defaultEnabled) : Boolean(row.enabled),
+      overridden: Boolean(row.overrideId)
+    }))
+  });
+});
+
+app.put("/api/assets/:id/thresholds/:metric", authenticate, async (req, res) => {
+  const asset = await getHost(req.params.id);
+  if (!asset) {
+    return res.status(404).json({ error: "Asset not found" });
+  }
+
+  const { warningValue, criticalValue, enabled } = req.body;
+  const warning = Number(warningValue);
+  const critical = Number(criticalValue);
+
+  if (!Number.isFinite(warning) || !Number.isFinite(critical)) {
+    return res.status(400).json({ error: "Warning and critical values must be numbers" });
+  }
+
+  if (warning >= critical) {
+    return res.status(400).json({ error: "Warning value must be lower than critical value" });
+  }
+
+  await pool.query(
+    `INSERT INTO host_thresholds (host_id, metric, warning_value, critical_value, enabled)
+     VALUES (?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+      warning_value = VALUES(warning_value),
+      critical_value = VALUES(critical_value),
+      enabled = VALUES(enabled)`,
+    [asset.id, req.params.metric, warning, critical, enabled ? 1 : 0]
+  );
+
+  res.json({ threshold: { metric: req.params.metric, warningValue: warning, criticalValue: critical, enabled: Boolean(enabled), overridden: true } });
+});
+
+app.delete("/api/assets/:id/thresholds/:metric", authenticate, async (req, res) => {
+  const [result] = await pool.query("DELETE FROM host_thresholds WHERE host_id = ? AND metric = ?", [
+    req.params.id,
+    req.params.metric
+  ]);
+  res.json({ deleted: result.affectedRows > 0 });
 });
 
 app.put("/api/thresholds/:metric", authenticate, async (req, res) => {

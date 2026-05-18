@@ -57,6 +57,21 @@ export async function migrate() {
   `);
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS host_thresholds (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      host_id VARCHAR(160) NOT NULL,
+      metric VARCHAR(80) NOT NULL,
+      warning_value DECIMAL(10,2) NOT NULL,
+      critical_value DECIMAL(10,2) NOT NULL,
+      enabled TINYINT(1) NOT NULL DEFAULT 1,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_host_metric (host_id, metric),
+      CONSTRAINT fk_host_thresholds_host FOREIGN KEY (host_id) REFERENCES hosts(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS alerts (
       id INT AUTO_INCREMENT PRIMARY KEY,
       host_id VARCHAR(160) NOT NULL,

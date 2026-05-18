@@ -103,6 +103,12 @@ const messages = {
     prometheusProvider: "PrometheusMetricsProvider",
     thresholds: "Alert thresholds",
     thresholdsHelp: "Set warning and critical limits used when backend evaluates live metrics.",
+    thresholdScope: "Scope",
+    globalDefaults: "Global defaults",
+    assetOverrides: "Asset overrides",
+    override: "Override",
+    inherited: "Inherited",
+    reset: "Reset",
     metric: "Metric",
     warning: "Warning",
     critical: "Critical",
@@ -193,6 +199,12 @@ const messages = {
     prometheusProvider: "PrometheusMetricsProvider",
     thresholds: "Ngưỡng cảnh báo",
     thresholdsHelp: "Thiết lập ngưỡng warning và critical để backend đánh giá metric thật.",
+    thresholdScope: "Phạm vi",
+    globalDefaults: "Mặc định toàn cục",
+    assetOverrides: "Ngưỡng riêng theo asset",
+    override: "Riêng",
+    inherited: "Theo mặc định",
+    reset: "Reset",
     metric: "Metric",
     warning: "Warning",
     critical: "Critical",
@@ -698,14 +710,27 @@ function AlertList({ alerts, onAck, dense = false, t, locale }) {
 
 function SettingsPage({ t, token }) {
   const [thresholds, setThresholds] = useState([]);
+  const [assets, setAssets] = useState([]);
+  const [scope, setScope] = useState("global");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
+  const isAssetScope = scope !== "global";
 
   useEffect(() => {
-    apiFetch("/api/thresholds", token)
-      .then((data) => setThresholds(data.thresholds))
+    Promise.all([apiFetch("/api/thresholds", token), apiFetch("/api/assets", token)])
+      .then(([thresholdData, assetData]) => {
+        setThresholds(thresholdData.thresholds);
+        setAssets(assetData.assets);
+      })
       .catch((err) => setError(err.message || t("loadError")));
   }, [token]);
+
+  useEffect(() => {
+    const path = scope === "global" ? "/api/thresholds" : `/api/assets/${scope}/thresholds`;
+    apiFetch(path, token)
+      .then((data) => setThresholds(data.thresholds))
+      .catch((err) => setError(err.message || t("loadError")));
+  }, [scope, token]);
 
   function updateThreshold(metric, patch) {
     setThresholds((current) =>
@@ -717,7 +742,8 @@ function SettingsPage({ t, token }) {
     setStatus(`${t("saving")} ${threshold.metric}`);
     setError("");
     try {
-      const data = await apiFetch(`/api/thresholds/${threshold.metric}`, token, {
+      const path = isAssetScope ? `/api/assets/${scope}/thresholds/${threshold.metric}` : `/api/thresholds/${threshold.metric}`;
+      const data = await apiFetch(path, token, {
         method: "PUT",
         body: JSON.stringify({
           warningValue: Number(threshold.warningValue),
@@ -726,6 +752,20 @@ function SettingsPage({ t, token }) {
         })
       });
       updateThreshold(threshold.metric, data.threshold);
+      setStatus(`${t("saved")} ${threshold.metric}`);
+    } catch (err) {
+      setStatus("");
+      setError(err.message);
+    }
+  }
+
+  async function resetThreshold(threshold) {
+    setStatus(`${t("saving")} ${threshold.metric}`);
+    setError("");
+    try {
+      await apiFetch(`/api/assets/${scope}/thresholds/${threshold.metric}`, token, { method: "DELETE" });
+      const data = await apiFetch(`/api/assets/${scope}/thresholds`, token);
+      setThresholds(data.thresholds);
       setStatus(`${t("saved")} ${threshold.metric}`);
     } catch (err) {
       setStatus("");
@@ -753,6 +793,20 @@ function SettingsPage({ t, token }) {
           </div>
           {status ? <small>{status}</small> : null}
         </div>
+        <div className="threshold-scope">
+          <label>
+            {t("thresholdScope")}
+            <select value={scope} onChange={(event) => setScope(event.target.value)}>
+              <option value="global">{t("globalDefaults")}</option>
+              {assets.map((asset) => (
+                <option key={asset.id} value={asset.id}>
+                  {asset.name} - {asset.ip}
+                </option>
+              ))}
+            </select>
+          </label>
+          <span>{isAssetScope ? t("assetOverrides") : t("globalDefaults")}</span>
+        </div>
         {error ? <div className="form-error">{error}</div> : null}
         <div className="threshold-list">
           <div className="threshold-row threshold-head">
@@ -760,6 +814,7 @@ function SettingsPage({ t, token }) {
             <span>{t("warning")}</span>
             <span>{t("critical")}</span>
             <span>{t("enabled")}</span>
+            <span>{isAssetScope ? t("override") : ""}</span>
             <span></span>
           </div>
           {thresholds.map((threshold) => (
@@ -787,7 +842,13 @@ function SettingsPage({ t, token }) {
                 />
                 <span>{threshold.enabled ? t("enabled") : t("disabled")}</span>
               </label>
+              <span className={`threshold-state ${threshold.overridden ? "overridden" : ""}`}>
+                {isAssetScope ? (threshold.overridden ? t("override") : t("inherited")) : ""}
+              </span>
               <button onClick={() => saveThreshold(threshold)}>{t("save")}</button>
+              {isAssetScope && threshold.overridden ? (
+                <button className="secondary-button" onClick={() => resetThreshold(threshold)}>{t("reset")}</button>
+              ) : null}
             </div>
           ))}
         </div>
