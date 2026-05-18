@@ -8,7 +8,9 @@
     "server": "npm run dev --workspace server",
     "client": "npm run dev --workspace client",
     "build": "npm run build --workspace client",
-    "start": "npm run start --workspace server"
+    "start": "npm run start --workspace server",
+    "prod": "bash scripts/start-prod.sh",
+    "prod:stop": "bash scripts/stop-prod.sh"
   },
   "workspaces": [
     "client",
