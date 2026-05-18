@@ -77,6 +77,7 @@ button {
 }
 
 .login-panel input,
+.login-panel select,
 .toolbar input,
 .toolbar select {
   width: 100%;
@@ -296,7 +297,7 @@ button {
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 690px;
+  min-width: 820px;
 }
 
 th,

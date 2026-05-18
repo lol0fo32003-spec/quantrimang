@@ -59,65 +59,93 @@ export class PrometheusMetricsProvider {
     this.baseUrl = baseUrl.replace(/\/$/, "");
   }
 
-  async query(promql) {
-    const url = new URL(`${this.baseUrl}/api/v1/query`);
-    url.searchParams.set("query", promql);
+  async request(path, params = {}) {
+    const url = new URL(`${this.baseUrl}${path}`);
+    for (const [key, value] of Object.entries(params)) {
+      url.searchParams.set(key, value);
+    }
+
     const response = await fetch(url);
     const payload = await response.json();
 
     if (!response.ok || payload.status !== "success") {
-      throw new Error(payload.error || `Prometheus query failed: ${promql}`);
+      throw new Error(payload.error || `Prometheus request failed: ${path}`);
     }
 
-    const value = payload.data.result[0]?.value?.[1];
+    return payload.data;
+  }
+
+  async getTargets() {
+    const data = await this.request("/api/v1/targets");
+    return data.activeTargets || [];
+  }
+
+  async query(promql) {
+    const data = await this.request("/api/v1/query", { query: promql });
+    const value = data.result[0]?.value?.[1];
     return value === undefined ? 0 : Number(value);
   }
 
+  async queryVector(promql) {
+    const data = await this.request("/api/v1/query", { query: promql });
+    return data.result || [];
+  }
+
   async queryRange(promql, minutes = 60, stepSeconds = 150) {
-    const url = new URL(`${this.baseUrl}/api/v1/query_range`);
     const end = Math.floor(Date.now() / 1000);
     const start = end - minutes * 60;
-    url.searchParams.set("query", promql);
-    url.searchParams.set("start", String(start));
-    url.searchParams.set("end", String(end));
-    url.searchParams.set("step", String(stepSeconds));
 
-    const response = await fetch(url);
-    const payload = await response.json();
+    const data = await this.request("/api/v1/query_range", {
+      query: promql,
+      start: String(start),
+      end: String(end),
+      step: String(stepSeconds)
+    });
 
-    if (!response.ok || payload.status !== "success") {
-      throw new Error(payload.error || `Prometheus range query failed: ${promql}`);
-    }
-
-    return (payload.data.result[0]?.values || []).map(([timestamp, value]) => ({
+    return (data.result[0]?.values || []).map(([timestamp, value]) => ({
       timestamp: new Date(timestamp * 1000).toISOString(),
       value: Math.round(Number(value) * 100) / 100
     }));
   }
 
+  async getHostInfo(asset) {
+    const instance = asset.prometheusInstance || asset.prometheus_instance || `${asset.ip}:9100`;
+    const result = await this.queryVector(`node_uname_info{instance="${instance}"}`);
+    const metric = result[0]?.metric || {};
+    const os = [metric.sysname, metric.release].filter(Boolean).join(" ");
+    return {
+      os: os || asset.os || null,
+      machine: metric.machine || null,
+      nodename: metric.nodename || null
+    };
+  }
+
   async getAssetMetrics(asset) {
-    const instance = asset.prometheusInstance || `${asset.ip}:9100`;
+    const instance = asset.prometheusInstance || asset.prometheus_instance || `${asset.ip}:9100`;
     const selector = `{instance="${instance}"}`;
     const rootFsSelector = `{instance="${instance}",fstype!~"tmpfs|overlay|squashfs",mountpoint="/"}`;
     const cpuQuery = `100 - (avg(rate(node_cpu_seconds_total${selector.replace("}", ',mode="idle"}')}[5m])) * 100)`;
     const memoryQuery = `(1 - (node_memory_MemAvailable_bytes${selector} / node_memory_MemTotal_bytes${selector})) * 100`;
     const diskQuery = `100 - ((node_filesystem_avail_bytes${rootFsSelector} * 100) / node_filesystem_size_bytes${rootFsSelector})`;
     const uptimeQuery = `time() - node_boot_time_seconds${selector}`;
+    const loadQuery = `node_load1${selector}`;
     const trafficInQuery = `sum(rate(node_network_receive_bytes_total${selector.replace("}", ',device!~"lo|docker.*|veth.*|br.*"}')}[5m])) * 8 / 1000000`;
     const trafficOutQuery = `sum(rate(node_network_transmit_bytes_total${selector.replace("}", ',device!~"lo|docker.*|veth.*|br.*"}')}[5m])) * 8 / 1000000`;
 
-    const [cpu, memory, disk, uptimeSeconds, trafficIn, trafficOut] = await Promise.all([
+    const [cpu, memory, disk, uptimeSeconds, loadAverage, trafficIn, trafficOut] = await Promise.all([
       this.query(cpuQuery),
       this.query(memoryQuery),
       this.query(diskQuery),
       this.query(uptimeQuery),
+      this.query(loadQuery),
       this.query(trafficInQuery),
       this.query(trafficOutQuery)
     ]);
 
-    const [cpuHistory, memoryHistory, trafficInHistory, trafficOutHistory] = await Promise.all([
+    const [cpuHistory, memoryHistory, diskHistory, trafficInHistory, trafficOutHistory] = await Promise.all([
       this.queryRange(cpuQuery),
       this.queryRange(memoryQuery),
+      this.queryRange(diskQuery),
       this.queryRange(trafficInQuery),
       this.queryRange(trafficOutQuery)
     ]);
@@ -131,7 +159,8 @@ export class PrometheusMetricsProvider {
         cpu: Math.round(cpu),
         memory: Math.round(memory),
         disk: Math.round(disk),
-        uptime: Math.min(100, Math.round((uptimeSeconds / 86400) * 100)),
+        uptime: Math.round(uptimeSeconds),
+        loadAverage: Math.round(loadAverage * 100) / 100,
         latency: 0,
         packetLoss: 0,
         trafficIn: Math.round(trafficIn * 100) / 100,
@@ -141,6 +170,7 @@ export class PrometheusMetricsProvider {
       history: {
         cpu: cpuHistory,
         memory: memoryHistory,
+        disk: diskHistory,
         latency: [],
         trafficIn: trafficInHistory,
         trafficOut: trafficOutHistory

@@ -49,16 +49,23 @@ const messages = {
     basedOnAssetStatus: "based on asset status",
     openAlerts: "Open alerts",
     warningNeedsAction: "warning or higher needs action",
+    avgCpu: "Average CPU",
+    avgMemory: "Average RAM",
+    avgDisk: "Average Disk",
+    networkTraffic: "Network traffic",
+    fromPrometheus: "from Prometheus",
+    inboundOutbound: "inbound + outbound",
     assetStatus: "Asset status",
     monitoredObjects: "monitored objects",
     recentAlerts: "Recent alerts",
     open: "open",
     assetsSubtitle: "Filter, inspect status, and view metrics by asset.",
     searchPlaceholder: "Search by name or IP",
-    allTypes: "{t("allTypes")}",
-    allStatuses: "{t("allStatuses")}",
+    allTypes: "All types",
+    allStatuses: "All statuses",
     asset: "Asset",
     ipEndpoint: "IP / Endpoint",
+    operatingSystem: "OS",
     status: "Status",
     severity: "Severity",
     lastCheck: "Last check",
@@ -68,14 +75,17 @@ const messages = {
     latency: "Latency",
     loss: "Loss",
     uptime: "Uptime",
+    loadAverage: "Load average",
+    connectionStatus: "Connection",
     trafficIn: "Traffic in",
+    trafficOut: "Traffic out",
     interfacesServices: "Interfaces / Services",
     lastSamples: "last 24 samples",
     noData: "No data",
     alertsSubtitle: "Track severity and acknowledge open incidents.",
-    allSeverities: "{t("allSeverities")}",
-    allStates: "{t("allStates")}",
-    acknowledged: "{t("acknowledged")}",
+    allSeverities: "All severities",
+    allStates: "All states",
+    acknowledged: "Acknowledged",
     ack: "Ack",
     settingsSubtitle: "Configure runtime and data adapters for the MVP.",
     metricsProvider: "Metrics provider",
@@ -109,6 +119,12 @@ const messages = {
     basedOnAssetStatus: "dựa trên trạng thái asset",
     openAlerts: "Cảnh báo mở",
     warningNeedsAction: "warning trở lên cần xử lý",
+    avgCpu: "CPU trung bình",
+    avgMemory: "RAM trung bình",
+    avgDisk: "Disk trung bình",
+    networkTraffic: "Lưu lượng mạng",
+    fromPrometheus: "từ Prometheus",
+    inboundOutbound: "vào + ra",
     assetStatus: "Trạng thái asset",
     monitoredObjects: "đối tượng đang giám sát",
     recentAlerts: "Cảnh báo gần đây",
@@ -119,6 +135,7 @@ const messages = {
     allStatuses: "Tất cả trạng thái",
     asset: "Asset",
     ipEndpoint: "IP / Endpoint",
+    operatingSystem: "Hệ điều hành",
     status: "Trạng thái",
     severity: "Mức độ",
     lastCheck: "Lần kiểm tra cuối",
@@ -128,7 +145,10 @@ const messages = {
     latency: "Độ trễ",
     loss: "Mất gói",
     uptime: "Uptime",
+    loadAverage: "Load average",
+    connectionStatus: "Kết nối",
     trafficIn: "Traffic vào",
+    trafficOut: "Traffic ra",
     interfacesServices: "Interfaces / Services",
     lastSamples: "24 mẫu gần nhất",
     noData: "Không có dữ liệu",
@@ -188,6 +208,13 @@ function formatTime(value, locale = "vi") {
     day: "2-digit",
     month: "2-digit"
   }).format(new Date(value));
+}
+
+function formatDuration(seconds) {
+  const days = Math.floor(Number(seconds || 0) / 86400);
+  const hours = Math.floor((Number(seconds || 0) % 86400) / 3600);
+  if (days > 0) return `${days}d ${hours}h`;
+  return `${hours}h`;
 }
 
 function assetIcon(type) {
@@ -350,7 +377,13 @@ function Dashboard({ assets, alerts, onSelectAsset, t, locale }) {
   const openAlerts = alerts.filter((alert) => !alert.acknowledged);
   const critical = openAlerts.filter((alert) => alert.severity === "CRITICAL").length;
   const online = assets.filter((asset) => asset.status === "online").length;
-  const serviceHealth = Math.round((online / Math.max(assets.length, 1)) * 100);
+  const metricAssets = assets.filter((asset) => asset.metrics);
+  const averageMetric = (key) =>
+    Math.round(metricAssets.reduce((sum, asset) => sum + Number(asset.metrics?.[key] || 0), 0) / Math.max(metricAssets.length, 1));
+  const networkTotal = metricAssets.reduce(
+    (sum, asset) => sum + Number(asset.metrics?.trafficIn || 0) + Number(asset.metrics?.trafficOut || 0),
+    0
+  );
 
   return (
     <>
@@ -358,7 +391,10 @@ function Dashboard({ assets, alerts, onSelectAsset, t, locale }) {
       <div className="metric-grid">
         <MetricCard icon={<CheckCircle2 />} label={t("onlineAssets")} value={`${online}/${assets.length}`} detail={t("responding")} tone="ok" />
         <MetricCard icon={<AlertTriangle />} label={t("criticalAlerts")} value={critical} detail={t("unacknowledged")} tone="critical" />
-        <MetricCard icon={<Gauge />} label={t("serviceHealth")} value={`${serviceHealth}%`} detail={t("basedOnAssetStatus")} tone="info" />
+        <MetricCard icon={<Gauge />} label={t("avgCpu")} value={`${averageMetric("cpu")}%`} detail={t("fromPrometheus")} tone="info" />
+        <MetricCard icon={<Cpu />} label={t("avgMemory")} value={`${averageMetric("memory")}%`} detail={t("fromPrometheus")} tone="info" />
+        <MetricCard icon={<HardDrive />} label={t("avgDisk")} value={`${averageMetric("disk")}%`} detail={t("fromPrometheus")} tone="warning" />
+        <MetricCard icon={<Network />} label={t("networkTraffic")} value={`${Math.round(networkTotal)} Mb`} detail={t("inboundOutbound")} tone="ok" />
         <MetricCard icon={<Cpu />} label={t("openAlerts")} value={openAlerts.length} detail={t("warningNeedsAction")} tone="warning" />
       </div>
       <section className="panel">
@@ -420,7 +456,7 @@ function AssetsPage({ assets, selectedAsset, setSelectedAsset, token, t, locale 
       <div className="toolbar">
         <div className="searchbox"><Search size={16} /><input placeholder={t("searchPlaceholder")} value={query} onChange={(event) => setQuery(event.target.value)} /></div>
         <select value={type} onChange={(event) => setType(event.target.value)}>
-          <option value="all">All types</option>
+          <option value="all">{t("allTypes")}</option>
           <option value="server">Server</option>
           <option value="router">Router</option>
           <option value="switch">Switch</option>
@@ -428,7 +464,7 @@ function AssetsPage({ assets, selectedAsset, setSelectedAsset, token, t, locale 
           <option value="service">Service</option>
         </select>
         <select value={status} onChange={(event) => setStatus(event.target.value)}>
-          <option value="all">All statuses</option>
+          <option value="all">{t("allStatuses")}</option>
           <option value="online">Online</option>
           <option value="degraded">Degraded</option>
           <option value="offline">Offline</option>
@@ -452,6 +488,7 @@ function AssetTable({ assets, onSelectAsset, selectedAsset, compact = false, t, 
           <tr>
             <th>{t("asset")}</th>
             <th>{t("ipEndpoint")}</th>
+            <th>{t("operatingSystem")}</th>
             <th>{t("status")}</th>
             <th>{t("severity")}</th>
             {!compact ? <th>{t("lastCheck")}</th> : null}
@@ -467,6 +504,7 @@ function AssetTable({ assets, onSelectAsset, selectedAsset, compact = false, t, 
                 </div>
               </td>
               <td>{asset.ip}</td>
+              <td>{asset.os || "-"}</td>
               <td><span className={`status-dot ${asset.status}`}></span>{asset.status}</td>
               <td><Badge tone={asset.severity}>{asset.severity}</Badge></td>
               {!compact ? <td>{formatTime(asset.lastCheck, locale)}</td> : null}
@@ -504,13 +542,16 @@ function AssetDetail({ detail, metrics, t, locale }) {
         <MetricPill label="Disk" value={`${metrics.current.disk}%`} />
         <MetricPill label={t("latency")} value={`${metrics.current.latency}ms`} />
         <MetricPill label={t("loss")} value={`${metrics.current.packetLoss}%`} />
-        <MetricPill label={t("uptime")} value={`${metrics.current.uptime}%`} />
+        <MetricPill label={t("uptime")} value={formatDuration(metrics.current.uptime)} />
+        <MetricPill label={t("loadAverage")} value={metrics.current.loadAverage ?? 0} />
+        <MetricPill label={t("connectionStatus")} value={asset.status} />
       </div>
       <div className="chart-grid">
         <ChartPanel title="CPU" series={metrics.history.cpu} unit="%" color="#ef4444" t={t} />
         <ChartPanel title={t("memory")} series={metrics.history.memory} unit="%" color="#2563eb" t={t} />
-        <ChartPanel title={t("latency")} series={metrics.history.latency} unit="ms" color="#f59e0b" t={t} />
+        <ChartPanel title="Disk" series={metrics.history.disk} unit="%" color="#f59e0b" t={t} />
         <ChartPanel title={t("trafficIn")} series={metrics.history.trafficIn} unit="Mb" color="#16a34a" t={t} />
+        <ChartPanel title={t("trafficOut")} series={metrics.history.trafficOut} unit="Mb" color="#0f766e" t={t} />
       </div>
       <h3>{t("interfacesServices")}</h3>
       <div className="chips">{items.map((item) => <span key={item}>{item}</span>)}</div>
@@ -547,13 +588,13 @@ function AlertsPage({ alerts, refresh, token, t, locale }) {
       <PageHeader title={t("alerts")} subtitle={t("alertsSubtitle")} />
       <div className="toolbar">
         <select value={severity} onChange={(event) => setSeverity(event.target.value)}>
-          <option value="all">All severities</option>
+          <option value="all">{t("allSeverities")}</option>
           {severityLabels.map((item) => <option key={item} value={item}>{item}</option>)}
         </select>
         <select value={ack} onChange={(event) => setAck(event.target.value)}>
-          <option value="all">All states</option>
+          <option value="all">{t("allStates")}</option>
           <option value="false">{t("unacknowledged")}</option>
-          <option value="true">Acknowledged</option>
+          <option value="true">{t("acknowledged")}</option>
         </select>
       </div>
       <section className="panel">
